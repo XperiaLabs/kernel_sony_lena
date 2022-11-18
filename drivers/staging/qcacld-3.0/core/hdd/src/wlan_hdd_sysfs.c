@@ -587,14 +587,6 @@ static void hdd_sysfs_destroy_powerstats_interface(void)
 	}
 	sysfs_remove_file(driver_kobject, &power_stats_attribute.attr);
 }
-#else
-static void hdd_sysfs_create_powerstats_interface(void)
-{
-}
-
-static void hdd_sysfs_destroy_powerstats_interface(void)
-{
-}
 #endif
 
 static ssize_t
