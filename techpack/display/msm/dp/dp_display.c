@@ -123,6 +123,8 @@ static char *dp_display_state_name(enum dp_display_states state)
 }
 
 static struct dp_display *g_dp_display;
+struct device virtualdev;
+
 #define HPD_STRING_SIZE 30
 
 struct dp_hdcp_dev {
@@ -192,12 +194,127 @@ struct dp_display_private {
 	bool process_hpd_connect;
 
 	struct notifier_block usb_nb;
+	u32 dp_stop_state;
 };
 
 static const struct of_device_id dp_dt_match[] = {
 	{.compatible = "qcom,dp-display"},
 	{}
 };
+
+static ssize_t dp_display_dp_stop_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct dp_display_private *dp;
+
+	if (dev == NULL) {
+		pr_err("invalid dev\n");
+		return -EINVAL;
+	}
+
+	dp = dev_get_drvdata(dev);
+	if (dp == NULL) {
+		pr_err("no driver data found\n");
+		return -ENODEV;
+	}
+
+	return scnprintf(buf, PAGE_SIZE, "%08x\n", dp->dp_stop_state);
+}
+
+static void dp_display_host_deinit(struct dp_display_private *dp);
+static void dp_display_disconnect_sync(struct dp_display_private *dp);
+
+static ssize_t dp_display_dp_stop_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct dp_display_private *dp;
+
+	if (dev == NULL) {
+		pr_err("invalid dev\n");
+		return -EINVAL;
+	}
+
+	dp = dev_get_drvdata(dev);
+	if (dp == NULL) {
+		pr_err("no driver data found\n");
+		return -ENODEV;
+	}
+
+	if (kstrtou32(buf, 0, &dp->dp_stop_state) < 0) {
+		pr_err("sscanf failed to set dp_stop_state\n");
+		return -EINVAL;
+	}
+	pr_debug("dp_stop_state = %08x\n", dp->dp_stop_state);
+
+	/* Stop DP by Thermal client */
+	if (dp->hpd->hpd_high) {
+		pr_debug("disconnect DP by Thermal client\n");
+		dp_display_disconnect_sync(dp);
+
+		mutex_lock(&dp->session_lock);
+		dp_display_host_deinit(dp);
+		dp_display_state_remove(DP_STATE_CONFIGURED);
+		mutex_unlock(&dp->session_lock);
+		
+		if (!dp->debug->sim_mode && !dp->parser->no_aux_switch
+		    && !dp->parser->gpio_aux_switch)
+			dp->aux->aux_switch(dp->aux, false, ORIENTATION_NONE);
+	}
+
+	return count;
+}
+
+static struct device_attribute dp_attributes[] = {
+	__ATTR(dp_is_stopped, 0664,
+		dp_display_dp_stop_show,
+		dp_display_dp_stop_store),
+};
+
+static int dp_display_register_attributes(struct device *dev)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(dp_attributes); i++)
+		if (device_create_file(dev, dp_attributes + i))
+			goto error;
+	return 0;
+
+error:
+	dev_err(dev, "%s: Unable to create interface\n", __func__);
+
+	for (--i; i >= 0 ; i--)
+		device_remove_file(dev, dp_attributes + i);
+	return -ENODEV;
+}
+
+int dp_display_create_fs(struct dp_display_private *dp)
+{
+	int rc = 0;
+	char *path_name = "drm_dp";
+
+	if (dp == NULL) {
+		pr_err("no driver data found\n");
+		return -ENODEV;
+	}
+
+	dev_set_name(&virtualdev, "%s", path_name);
+
+	rc = device_register(&virtualdev);
+	if (rc) {
+		pr_err("%s: device_register failed rc = %d\n", __func__, rc);
+		goto err;
+	}
+
+	rc = dp_display_register_attributes(&virtualdev);
+	if (rc) {
+		device_unregister(&virtualdev);
+		goto err;
+	}
+	dev_set_drvdata(&virtualdev, dp);
+
+err:
+	return rc;
+}
 
 static inline bool dp_display_is_hdcp_enabled(struct dp_display_private *dp)
 {
@@ -1126,6 +1243,12 @@ static int dp_display_usbpd_configure_cb(struct device *dev)
 		goto end;
 	}
 
+	/* check for stop_state */
+	if (dp->dp_stop_state) {
+		pr_info("dp is stopped (state=%08x)\n", dp->dp_stop_state);
+		return 0;
+	}
+
 	if (!dp->debug->sim_mode && !dp->parser->no_aux_switch
 	    && !dp->parser->gpio_aux_switch) {
 		rc = dp->aux->aux_switch(dp->aux, true, dp->hpd->orientation);
@@ -1461,6 +1584,12 @@ static int dp_display_usbpd_attention_cb(struct device *dev)
 		return -ENODEV;
 	}
 
+	/* check for stop_state */
+	if (dp->dp_stop_state) {
+		pr_info("dp is stopped (state=%08x)\n",	dp->dp_stop_state);
+		return 0;
+	}
+
 	DP_DEBUG("hpd_irq:%d, hpd_high:%d, power_on:%d, is_connected:%d\n",
 			dp->hpd->hpd_irq, dp->hpd->hpd_high,
 			!!dp_display_state_is(DP_STATE_ENABLED),
@@ -1766,6 +1895,12 @@ static int dp_display_post_init(struct dp_display *dp_display)
 	if (IS_ERR_OR_NULL(dp)) {
 		DP_ERR("invalid params\n");
 		rc = -EINVAL;
+		goto end;
+	}
+
+	rc = dp_display_create_fs(dp);
+	if (rc) {
+		pr_err("sysfs create dir failed, rc = %d\n", rc);
 		goto end;
 	}
 

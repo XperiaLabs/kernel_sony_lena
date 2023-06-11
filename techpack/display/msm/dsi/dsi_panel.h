@@ -14,6 +14,10 @@
 #include <drm/drm_panel.h>
 #include <drm/msm_drm.h>
 
+#include <linux/workqueue.h>
+#include <linux/interrupt.h>
+
+#include "dsi_display.h"
 #include "dsi_defs.h"
 #include "dsi_ctrl_hw.h"
 #include "dsi_clk.h"
@@ -27,6 +31,50 @@
 #define DSI_CMD_PPS_SIZE 135
 
 #define DSI_MODE_MAX 32
+
+/* dcs read/write */
+#define DTYPE_DCS_WRITE		0x05	/* short write, 0 parameter */
+#define DTYPE_DCS_WRITE1	0x15	/* short write, 1 parameter */
+#define DTYPE_DCS_READ		0x06	/* read */
+#define DTYPE_DCS_LWRITE	0x39	/* long write */
+
+/* generic read/write */
+#define DTYPE_GEN_WRITE		0x03	/* short write, 0 parameter */
+#define DTYPE_GEN_WRITE1	0x13	/* short write, 1 parameter */
+#define DTYPE_GEN_WRITE2	0x23	/* short write, 2 parameter */
+#define DTYPE_GEN_LWRITE	0x29	/* long write */
+#define DTYPE_GEN_READ		0x04	/* long read, 0 parameter */
+#define DTYPE_GEN_READ1		0x14	/* long read, 1 parameter */
+#define DTYPE_GEN_READ2		0x24	/* long read, 2 parameter */
+
+#define DTYPE_COMPRESSION_MODE	0x07	/* compression mode */
+#define DTYPE_PPS		0x0a	/* pps */
+#define DTYPE_MAX_PKTSIZE	0x37	/* set max packet size */
+#define DTYPE_NULL_PKT		0x09	/* null packet, no data */
+#define DTYPE_BLANK_PKT		0x19	/* blankiing packet, no data */
+
+#define DTYPE_CM_ON		0x02	/* color mode off */
+#define DTYPE_CM_OFF		0x12	/* color mode on */
+#define DTYPE_PERIPHERAL_OFF	0x22
+#define DTYPE_PERIPHERAL_ON	0x32
+
+/*
+ * dcs response
+ */
+#define DTYPE_ACK_ERR_RESP      0x02
+#define DTYPE_EOT_RESP          0x08    /* end of tx */
+#define DTYPE_GEN_READ1_RESP    0x11    /* 1 parameter, short */
+#define DTYPE_GEN_READ2_RESP    0x12    /* 2 parameter, short */
+#define DTYPE_GEN_LREAD_RESP    0x1a
+#define DTYPE_DCS_LREAD_RESP    0x1c
+#define DTYPE_DCS_READ1_RESP    0x21    /* 1 parameter, short */
+#define DTYPE_DCS_READ2_RESP    0x22    /* 2 parameter, short */
+
+enum dbg_cmd_type {
+
+	DCS,
+	GEN,
+};
 
 /*
  * Defining custom dsi msg flag,
@@ -74,6 +122,16 @@ enum dsi_panel_physical_type {
 	DSI_DISPLAY_PANEL_TYPE_OLED,
 	DSI_DISPLAY_PANEL_TYPE_MAX,
 };
+
+/* short flag control default data */
+#define SHORT_CHATTER_CNT_START		1
+#define SHORT_DEFAULT_TARGET_CHATTER_CNT	3
+#define SHORT_DEFAULT_TARGET_CHATTER_INTERVAL	500
+#define SHORT_POWER_OFF_RETRY_INTERVAL	500
+
+#define SHORT_WORKER_ACTIVE		true
+#define SHORT_WORKER_PASSIVE		false
+#define SHORT_IRQF_FLAGS	(IRQF_ONESHOT | IRQF_TRIGGER_RISING)
 
 struct dsi_dfps_capabilities {
 	enum dsi_dfps_type type;
@@ -138,6 +196,52 @@ struct dsi_backlight_config {
 struct dsi_reset_seq {
 	u32 level;
 	u32 sleep_ms;
+};
+
+struct dsi_reset_cfg {
+	struct dsi_reset_seq *seq;
+	u32 count;
+};
+
+struct short_detection_ctrl {
+	struct delayed_work check_work;
+	int current_chatter_cnt;
+	int target_chatter_cnt;
+	int target_chatter_check_interval;
+	int irq_num;
+	bool short_check_working;
+	bool irq_enable;
+};
+
+struct panel_specific_pdata {
+	bool cont_splash_enabled;
+
+	struct dsi_reset_seq *sequence_touch;
+	int reset_touch_gpio;
+	int disp_err_fg_gpio;
+	u32 count_touch;
+
+	int lp11_on;
+
+	int lp11_off;
+	int touch_vddh_off;
+	int down_period;
+
+	int touch_reset_off;
+
+	struct dsi_reset_cfg on_seq;
+	struct dsi_reset_cfg off_seq;
+	bool rst_b_seq;
+	bool rst_after_pon;
+
+	bool display_onoff_state;
+	struct short_detection_ctrl short_det;
+
+	u32 *area_count;
+	int *area_count_table;
+	int area_count_table_size;
+	u32 now_area;
+	u32 start_jiffies;
 };
 
 struct dsi_panel_reset_config {
@@ -225,6 +329,8 @@ struct dsi_panel {
 	int panel_test_gpio;
 	int power_mode;
 	enum dsi_panel_physical_type panel_type;
+	struct panel_specific_pdata *spec_pdata;
+	bool hbm_en;
 };
 
 static inline bool dsi_panel_ulps_feature_enabled(struct dsi_panel *panel)
@@ -344,5 +450,18 @@ void dsi_panel_ext_bridge_put(struct dsi_panel *panel);
 
 void dsi_panel_calc_dsi_transfer_time(struct dsi_host_common_cfg *config,
 		struct dsi_display_mode *mode, u32 frame_threshold_us);
+
+void dsi_panel_driver_oled_short_check_worker(struct work_struct *work);
+void dsi_panel_driver_oled_short_det_enable(
+			struct panel_specific_pdata *spec_pdata, bool inWork);
+void dsi_panel_driver_oled_short_det_disable(
+			struct panel_specific_pdata *spec_pdata);
+void dsi_panel_driver_panel_update_area(struct dsi_panel *panel, u32 level);
+void dsi_panel_driver_init_area_count(struct dsi_panel *panel);
+void dsi_panel_driver_deinit_area_count(struct dsi_panel *panel);
+
+int dsi_panel_register_attributes(struct device *dev);
+int dsi_panel_set_hbm(struct dsi_panel *panel, u32 mode);
+int dsi_panel_set_cmd_by_user(struct dsi_panel *panel, u8 *addr, u8 *user_cmd);
 
 #endif /* _DSI_PANEL_H_ */

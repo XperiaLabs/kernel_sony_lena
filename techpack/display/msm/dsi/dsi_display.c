@@ -20,6 +20,7 @@
 #include "dsi_pwr.h"
 #include "sde_dbg.h"
 #include "dsi_parser.h"
+#include "linux/hardware_info.h"
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 #define INT_BASE_10 10
@@ -44,6 +45,8 @@ static const struct of_device_id dsi_display_dt_match[] = {
 	{.compatible = "qcom,dsi-display"},
 	{}
 };
+
+struct device virtdev;
 
 static void dsi_display_mask_ctrl_error_interrupts(struct dsi_display *display,
 			u32 mask, bool enable)
@@ -214,7 +217,7 @@ int dsi_display_set_backlight(struct drm_connector *connector,
 
 	/* scale backlight */
 	bl_scale = panel->bl_config.bl_scale;
-	bl_temp = bl_lvl * bl_scale / MAX_BL_SCALE_LEVEL;
+	bl_temp = bl_lvl * bl_scale / MAX_BL_LEVEL;
 
 	bl_scale_sv = panel->bl_config.bl_scale_sv;
 	bl_temp = (u32)bl_temp * bl_scale_sv / MAX_SV_BL_SCALE_LEVEL;
@@ -228,6 +231,8 @@ int dsi_display_set_backlight(struct drm_connector *connector,
 		       dsi_display->name, rc);
 		goto error;
 	}
+
+	dsi_panel_driver_panel_update_area(panel, (u32)bl_temp);
 
 	rc = dsi_panel_set_backlight(panel, (u32)bl_temp);
 	if (rc)
@@ -246,7 +251,8 @@ error:
 	return rc;
 }
 
-static int dsi_display_cmd_engine_enable(struct dsi_display *display)
+//static int dsi_display_cmd_engine_enable(struct dsi_display *display)
+int dsi_display_cmd_engine_enable(struct dsi_display *display)
 {
 	int rc = 0;
 	int i;
@@ -290,7 +296,8 @@ done:
 	return rc;
 }
 
-static int dsi_display_cmd_engine_disable(struct dsi_display *display)
+//static int dsi_display_cmd_engine_disable(struct dsi_display *display)
+int dsi_display_cmd_engine_disable(struct dsi_display *display)
 {
 	int rc = 0;
 	int i;
@@ -3767,6 +3774,89 @@ error:
 	return rc;
 }
 
+static irqreturn_t dsi_panel_driver_oled_short_det_handler(int irq, void *dev)
+{
+	struct dsi_display *display = (struct dsi_display *)dev;
+	struct short_detection_ctrl *short_det = NULL;
+
+	if (dev == NULL) {
+		DSI_ERR("%s: Invalid parameter\n", __func__);
+		return IRQ_HANDLED;
+	}
+	short_det = &display->panel->spec_pdata->short_det;
+
+	if (short_det == NULL) {
+		DSI_ERR("%s: NULL pointer detected\n", __func__);
+		return IRQ_HANDLED;
+	}
+
+	DSI_ERR("%s: VREG_NG interrupt!\n", __func__);
+
+	if (gpio_get_value(display->panel->spec_pdata->disp_err_fg_gpio) == 1)
+		DSI_ERR("%s: VREG NG!!!\n", __func__);
+	else
+		return IRQ_HANDLED;
+
+	if (short_det->short_check_working) {
+		DSI_DEBUG("%s already being check work.\n", __func__);
+		return IRQ_HANDLED;
+	}
+
+	short_det->current_chatter_cnt = SHORT_CHATTER_CNT_START;
+
+	schedule_delayed_work(&short_det->check_work,
+		msecs_to_jiffies(short_det->target_chatter_check_interval));
+
+	return IRQ_HANDLED;
+}
+
+void dsi_panel_driver_oled_short_det_init_works(struct dsi_display *display)
+{
+	struct short_detection_ctrl *short_det = NULL;
+	int rc = 0;
+
+	if (display == NULL) {
+		DSI_ERR("%s: Invalid parameter\n", __func__);
+		return;
+	}
+	short_det = &display->panel->spec_pdata->short_det;
+
+	INIT_DELAYED_WORK(&short_det->check_work,
+				dsi_panel_driver_oled_short_check_worker);
+
+	short_det->current_chatter_cnt = 0;
+	short_det->short_check_working = false;
+	short_det->target_chatter_check_interval =
+				SHORT_DEFAULT_TARGET_CHATTER_INTERVAL;
+
+	if (!gpio_is_valid(display->panel->spec_pdata->disp_err_fg_gpio)) {
+		DSI_ERR("%s: disp error flag gpio is invalid\n", __func__);
+		return;
+	}
+	short_det->irq_num = gpio_to_irq(display->panel->spec_pdata->disp_err_fg_gpio);
+
+	rc = request_irq(short_det->irq_num,
+			dsi_panel_driver_oled_short_det_handler,
+			SHORT_IRQF_FLAGS, "disp_err_fg_gpio", display);
+	if (rc < 0) {
+		DSI_ERR("Failed to irq request rc=%d\n", rc);
+		return;
+	}
+
+	dsi_panel_driver_oled_short_det_disable(display->panel->spec_pdata);
+	if (display->boot_disp->boot_disp_en)
+		dsi_panel_driver_oled_short_det_enable(
+			display->panel->spec_pdata, SHORT_WORKER_PASSIVE);
+
+	//For error flag already rised in xboot case
+	if(gpio_get_value(display->panel->spec_pdata->disp_err_fg_gpio)) {
+		DSI_ERR("%s: Error Flag Detected\n", __func__);
+		short_det->current_chatter_cnt = SHORT_CHATTER_CNT_START;
+		schedule_delayed_work(&short_det->check_work,
+			msecs_to_jiffies(short_det->target_chatter_check_interval));
+	}
+}
+
 static int dsi_display_res_init(struct dsi_display *display)
 {
 	int rc = 0;
@@ -3803,6 +3893,8 @@ static int dsi_display_res_init(struct dsi_display *display)
 		DSI_ERR("failed to get panel, rc=%d\n", rc);
 		display->panel = NULL;
 		goto error_ctrl_put;
+	} else{
+		 get_hardware_info_data(HWID_LCM, display->panel->name);
 	}
 
 	display_for_each_ctrl(i, display) {
@@ -3813,6 +3905,10 @@ static int dsi_display_res_init(struct dsi_display *display)
 		phy->cfg.phy_type =
 			display->panel->host_config.phy_type;
 	}
+
+	if (display->boot_disp->boot_disp_en)
+		display->panel->spec_pdata->display_onoff_state = true;
+	dsi_panel_driver_oled_short_det_init_works(display);
 
 	rc = dsi_display_parse_lane_map(display);
 	if (rc) {
@@ -5004,6 +5100,171 @@ error:
 	return rc;
 }
 
+// Add for HBM tuning Start
+static ssize_t dsi_display_hbm_show(struct device *dev,
+        struct device_attribute *attr, char *buf)
+{
+    struct dsi_display *dsi_display;
+    struct platform_device *pdev = to_platform_device(dev);
+
+    if (!dev || !pdev) {
+        DSI_ERR("%s: invalid param(s)\n", __func__);
+        return -EINVAL;
+    }
+    dsi_display = platform_get_drvdata(pdev);
+    if (dsi_display == NULL || dsi_display->panel == NULL) {
+        DSI_ERR("%s: invalid display\n", __func__);
+        return -EIO;
+    }
+    return scnprintf(buf, PAGE_SIZE, "%d\n", dsi_display->panel->hbm_en);
+}
+
+
+static ssize_t dsi_display_hbm_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct dsi_display *dsi_display;
+	struct dsi_panel *panel;
+	struct platform_device *pdev = to_platform_device(dev);
+	unsigned int mode = 0;
+
+	if (!dev || !pdev) {
+		DSI_ERR("%s: invalid param(s)\n", __func__);
+		return -EINVAL;
+	}
+	dsi_display = platform_get_drvdata(pdev);
+	if (dsi_display == NULL || dsi_display->panel == NULL) {
+		DSI_ERR("%s: invalid display\n", __func__);
+		return -EIO;
+	}
+	panel = dsi_display->panel;
+	if (kstrtouint(buf, 0, &mode)) {
+		DSI_ERR("%s: failed to convert when write hbm_en.\n", __func__);
+		return -EFAULT;
+	}
+	if (mode < 0 || mode > 2) {
+		DSI_ERR("%s: invalid mode when write hbm_en %u.\n", __func__,  mode);
+		return -EINVAL;
+	}
+	dsi_panel_set_hbm(panel, mode);
+	return count;
+}
+
+
+static int s2h(u8 *in, u8 *out)
+{
+	unsigned int str_len = strlen(in);
+	unsigned int i = 0, j = 0;
+	u8 chang_val[0x1FF] = {0};
+
+	memset(out, 0, 0x1FF);
+	for(i = 0; i < str_len; i++){
+		if((in[i] >= '0') && (in[i] <= '9') ) {
+			chang_val[i] = in[i] - 0x30;
+		}
+		if((in[i] >= 'a') && (in[i] <= 'f') ) {
+			chang_val[i] = in[i] - 0x57;
+		}
+		if((in[i] >= 'A') && (in[i] <= 'F') ) {
+			chang_val[i] = in[i] - 0x37;
+		}
+		if ((i % 2) == 0){
+			out[j] = ((chang_val[i] << 4) & 0xF0);
+		}
+		if ((i % 2) == 1){
+			out[j] |= (chang_val[i] & 0x0F);
+			j++;
+		}
+	}
+	return 0;
+}
+
+static ssize_t dsi_display_set_user_cmd_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct dsi_display *dsi_display;
+	struct dsi_panel *panel;
+	struct platform_device *pdev = to_platform_device(dev);
+	u8 in_str[0x1FF] = {0};
+	u8 out_str[0x1FF] = {0};
+	u8 cmd[4] = {0};
+	u8 *setting = NULL;
+
+	if (!dev || !pdev) {
+		DSI_ERR("%s: invalid param(s)\n", __func__);
+		return -EINVAL;
+	}
+
+	dsi_display = platform_get_drvdata(pdev);
+	if (dsi_display == NULL || dsi_display->panel == NULL) {
+		DSI_ERR("%s: invalid display\n", __func__);
+		return -EIO;
+	}
+	panel = dsi_display->panel;
+	sscanf(buf, "%s", in_str);
+
+	s2h(in_str, out_str);
+	cmd[0] = out_str[0];
+	cmd[1] = out_str[1];
+	setting = out_str + 2;
+	dsi_panel_set_cmd_by_user(panel, cmd, setting);
+
+	return count;
+}
+
+static struct device_attribute panel_attributes[] = {
+	__ATTR(hbm_mode, S_IRUGO | S_IWUSR, dsi_display_hbm_show, dsi_display_hbm_store),
+	__ATTR(panel_reg_write, S_IWUSR, NULL, dsi_display_set_user_cmd_store),
+};
+
+int dsi_display_register_attributes(struct device *dev)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(panel_attributes); i++){
+		if (device_create_file(dev, panel_attributes + i)){
+			goto error;
+		}
+	}
+	return 0;
+
+error:
+	dev_err(dev, "%s: Unable to create interface\n", __func__);
+
+	for (--i; i >= 0 ; i--)
+		device_remove_file(dev, panel_attributes + i);
+	return -ENODEV;
+}
+
+int dsi_panel_create_fs(struct dsi_display *display)
+{
+	int rc = 0;
+	char *path_name = "dsi_panel_driver";
+
+	dev_set_name(&virtdev, "%s", path_name);
+	rc = device_register(&virtdev);
+	if (rc) {
+		pr_err("%s: device_register rc = %d\n", __func__, rc);
+		goto err;
+	}
+
+	rc = dsi_display_register_attributes(&virtdev);
+	if (rc) {
+		device_unregister(&virtdev);
+		goto err;
+	}
+	rc = dsi_panel_register_attributes(&virtdev);
+	if (rc) {
+		device_unregister(&virtdev);
+		goto err;
+	}
+	dev_set_drvdata(&virtdev, display);
+err:
+	return rc;
+}
+
+//Add for HBM tuning End
+
 /**
  * dsi_display_bind - bind dsi device with controlling device
  * @dev:        Pointer to base of platform device
@@ -5187,6 +5448,12 @@ static int dsi_display_bind(struct device *dev,
 		goto error_host_deinit;
 	}
 
+	rc = dsi_panel_create_fs(display);
+	if (rc) {
+		pr_err("%s: failed dsi_panel_create_fs rc=%d\n", __func__, rc);
+		goto error_host_deinit;
+	}
+
 	DSI_INFO("Successfully bind display panel '%s'\n", display->name);
 	display->drm_dev = drm;
 
@@ -5317,6 +5584,8 @@ static int dsi_display_init(struct dsi_display *display)
 		goto end;
 	}
 
+	dsi_panel_driver_init_area_count(display->panel);
+
 	rc = component_add(&pdev->dev, &dsi_display_comp_ops);
 	if (rc)
 		DSI_ERR("component add failed, rc=%d\n", rc);
@@ -5442,6 +5711,8 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 			goto end;
 	}
 
+	dsi_panel_driver_oled_short_det_init_works(display);
+
 	return 0;
 end:
 	if (display)
@@ -5477,6 +5748,8 @@ int dsi_display_dev_remove(struct platform_device *pdev)
 			ctrl->ctrl->dma_cmd_workq = NULL;
 		}
 	}
+
+	dsi_panel_driver_deinit_area_count(display->panel);
 
 	(void)_dsi_display_dev_deinit(display);
 

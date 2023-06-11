@@ -77,6 +77,25 @@ static void dp_aux_hex_dump(struct drm_dp_aux *drm_aux,
 }
 #endif
 
+static int dp_aux_configure_aux_flip(void)
+{
+	int dp_aux_flip_gpio = 1195;
+	static int g_aux_flip_status = 0;
+
+	if (gpio_is_valid(dp_aux_flip_gpio))
+	{
+		printk("------panel-display port aux flip---- \n");
+		g_aux_flip_status = gpio_get_value(dp_aux_flip_gpio);
+		if (g_aux_flip_status == 1){
+			g_aux_flip_status = 0;
+		} else {
+			g_aux_flip_status = 1;
+		}
+		gpio_direction_output(dp_aux_flip_gpio, g_aux_flip_status);
+	}
+	return 0;
+}
+
 static char *dp_aux_get_error(u32 aux_error)
 {
 	switch (aux_error) {
@@ -85,6 +104,7 @@ static char *dp_aux_get_error(u32 aux_error)
 	case DP_AUX_ERR_ADDR:
 		return DP_AUX_ENUM_STR(DP_AUX_ERR_ADDR);
 	case DP_AUX_ERR_TOUT:
+		dp_aux_configure_aux_flip();
 		return DP_AUX_ENUM_STR(DP_AUX_ERR_TOUT);
 	case DP_AUX_ERR_NACK:
 		return DP_AUX_ENUM_STR(DP_AUX_ERR_NACK);
@@ -761,6 +781,17 @@ static int dp_aux_configure_aux_switch(struct dp_aux *dp_aux,
 	struct dp_aux_private *aux;
 	int rc = 0;
 	enum fsa_function event = FSA_USBC_DISPLAYPORT_DISCONNECTED;
+
+{
+	int dp_aux_en_gpio = 1208;
+
+	if(enable){
+		if(gpio_is_valid(dp_aux_en_gpio)) {
+			gpio_direction_output(dp_aux_en_gpio, 0);
+		}
+	}
+	return 0;
+}
 
 	if (!dp_aux) {
 		DP_ERR("invalid input\n");
