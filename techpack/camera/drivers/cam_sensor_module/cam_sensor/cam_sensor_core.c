@@ -12,6 +12,66 @@
 #include "cam_common_util.h"
 #include "cam_packet_util.h"
 
+#include <linux/hardware_info.h>
+
+static void cam_sensor_write_hwinfo(uint32_t slotindex,uint16_t sensorid)
+{
+	if(0 == slotindex){
+		if(0x486 == sensorid){
+			get_hardware_info_data(HWID_MAIN_CAM,"IMX486 TXD Main");
+		}
+	}
+	else if(1 == slotindex){
+		if(0x487B == sensorid){
+			get_hardware_info_data(HWID_SUB_CAM,"S5K4H7 LCE Sub");
+		}
+	}
+	else if(2 == slotindex){
+		if(0x487B == sensorid){
+			get_hardware_info_data(HWID_MAIN_CAM_2,"S5K4H7 LCE Wide");
+		}
+	}
+	else if(3 == slotindex){
+		if(0x885A == sensorid){
+			get_hardware_info_data(HWID_MAIN_CAM_3,"OV8856 TXD TELE");
+		}
+	}
+}
+
+#define THERMAL_MULT 1000
+
+void cam_sensor_fill_thermal_zone(struct cam_sensor_ctrl_t *s_ctrl)
+{
+	int rc = 0;
+	uint32_t sensor_temperature = 0;
+	uint32_t temperature_addr = 0x013A; // TEMP_SEN_OUT Address
+	struct cam_camera_slave_info *slave_info;
+
+	slave_info = &(s_ctrl->sensordata->slave_info);
+
+	if (!slave_info) {
+		CAM_ERR(CAM_SENSOR, " failed: %pK",
+			 slave_info);
+		return;
+	}
+
+	rc = camera_io_dev_read(
+		&(s_ctrl->io_master_info),
+		temperature_addr,
+		&sensor_temperature,
+		CAMERA_SENSOR_I2C_TYPE_WORD,  // addr_type
+		CAMERA_SENSOR_I2C_TYPE_BYTE); // data_type
+
+	CAM_DBG(CAM_SENSOR, "rc %d read a: 0x%x v: %d for sensor id 0x%x:",
+		rc, temperature_addr, sensor_temperature, slave_info->sensor_id);
+
+	if(rc == 0) {
+		s_ctrl->thermal_info.thermal = sensor_temperature * THERMAL_MULT;
+		s_ctrl->thermal_info.status = true;
+	} else {
+		s_ctrl->thermal_info.status = rc;
+	}
+}
 
 static void cam_sensor_update_req_mgr(
 	struct cam_sensor_ctrl_t *s_ctrl,
@@ -241,6 +301,10 @@ static int32_t cam_sensor_i2c_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 			CAM_WARN(CAM_SENSOR,
 				"Rxed Update packets without linking");
 			goto end;
+		}
+
+		if(s_ctrl->sensordata->slave_info.sensor_id == 0x486) {
+			cam_sensor_fill_thermal_zone(s_ctrl);
 		}
 
 		i2c_reg_settings =
@@ -772,6 +836,9 @@ int cam_sensor_match_id(struct cam_sensor_ctrl_t *s_ctrl)
 	return rc;
 }
 
+
+
+
 int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 	void *arg)
 {
@@ -877,6 +944,7 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 			s_ctrl->sensordata->slave_info.sensor_slave_addr,
 			s_ctrl->sensordata->slave_info.sensor_id);
 
+                cam_sensor_write_hwinfo(s_ctrl->soc_info.index,s_ctrl->sensordata->slave_info.sensor_id);
 		cam_sensor_free_power_reg_rsc(s_ctrl);
 		rc = cam_sensor_power_down(s_ctrl);
 		if (rc < 0) {
@@ -925,11 +993,6 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 
 		sensor_acq_dev.device_handle =
 			cam_create_device_hdl(&bridge_params);
-		if (sensor_acq_dev.device_handle <= 0) {
-			rc = -EFAULT;
-			CAM_ERR(CAM_SENSOR, "Can not create device handle");
-			goto release_mutex;
-		}
 		s_ctrl->bridge_intf.device_hdl = sensor_acq_dev.device_handle;
 		s_ctrl->bridge_intf.session_hdl = sensor_acq_dev.session_handle;
 
@@ -1140,6 +1203,7 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 				goto release_mutex;
 			}
 			s_ctrl->sensor_state = CAM_SENSOR_CONFIG;
+
 		}
 
 		if (s_ctrl->i2c_data.read_settings.is_settings_valid) {
@@ -1299,6 +1363,7 @@ int cam_sensor_power_up(struct cam_sensor_ctrl_t *s_ctrl)
 	if (rc < 0)
 		CAM_ERR(CAM_SENSOR, "cci_init failed: rc: %d", rc);
 
+	s_ctrl->thermal_info.status = -EINVAL;
 	return rc;
 }
 
@@ -1336,6 +1401,7 @@ int cam_sensor_power_down(struct cam_sensor_ctrl_t *s_ctrl)
 		}
 	}
 
+	s_ctrl->thermal_info.status = -ENODEV;
 	camera_io_release(&(s_ctrl->io_master_info));
 
 	return rc;

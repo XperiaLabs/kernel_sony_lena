@@ -15,6 +15,133 @@
 
 #define MAX_READ_SIZE  0x7FFFF
 
+#include <linux/hardware_info.h>
+static int cam_eeprom_write_otp_info(struct cam_eeprom_ctrl_t *e_ctrl,
+		struct cam_eeprom_memory_block_t *block)
+{
+	uint32_t  cell_index = 0;
+	uint8_t * data = NULL;
+	struct global_otp_struct hw_info_otp;
+	memset(&hw_info_otp, 0, sizeof(hw_info_otp));
+	pr_info("cell-index:%d",e_ctrl->soc_info.index);
+	cell_index = e_ctrl->soc_info.index;
+	data = block->mapdata;
+	if(0 == cell_index){
+		pr_info("[main otp][vald]:%d, [Module]:0x%x,[Year]20%d,[Month]:%d,[Day]:%d,[Lens]:%d,[VCM]:%d",
+		data[0],data[1],data[2],data[3],data[4],data[5],data[6]);
+		if(data[0]){
+			hw_info_otp.otp_valid = 1;
+			 hw_info_otp.vendor_id = data[1];
+			 hw_info_otp.year = data[2];
+			 hw_info_otp.month = data[3];
+			 hw_info_otp.day = data[4];
+			 hw_info_otp.vcm_moduleid = data[5];
+			 hw_info_otp.vcm_vendorid=data[6];
+			 write_cam_otp_info(HWID_MAIN_OTP,&hw_info_otp);
+		}
+	}
+
+	if(1 == cell_index){
+		pr_info("[Front otp][vald]:%d, [Module]:0x%x,[Year]20%d,[Month]:%d,[Day]:%d,[Lens]:%d,[VCM]:%d",
+		data[0],data[1],data[2],data[3],data[4],data[5],data[6]);
+		if(data[0]){
+			hw_info_otp.otp_valid = 1;
+			 hw_info_otp.vendor_id = data[1];
+			 hw_info_otp.year = data[2];
+			 hw_info_otp.month = data[3];
+			 hw_info_otp.day = data[4];
+			 hw_info_otp.vcm_moduleid = data[5];
+			 hw_info_otp.vcm_vendorid=data[6];
+			 write_cam_otp_info(HWID_SUB_OTP,&hw_info_otp);
+		}
+	}
+
+	if(2 == cell_index){
+		pr_info("[main2 otp][vald]:%d, [Module]:0x%x,[Year]20%d,[Month]:%d,[Day]:%d,[Lens]:%d,[VCM]:%d",
+		data[0],data[1],data[2],data[3],data[4],data[5],data[6]);
+		if(data[0]){
+			hw_info_otp.otp_valid = 1;
+			 hw_info_otp.vendor_id = data[1];
+			 hw_info_otp.year = data[2];
+			 hw_info_otp.month = data[3];
+			 hw_info_otp.day = data[4];
+			 hw_info_otp.vcm_moduleid = data[5];
+			 hw_info_otp.vcm_vendorid=data[6];
+			 write_cam_otp_info(HWID_MAIN_OTP_2,&hw_info_otp);
+		}
+	}
+
+	if(3 == cell_index){
+		pr_info("[main3 otp][vald]:%d, [Module]:0x%x,[Year]20%d,[Month]:%d,[Day]:%d,[Lens]:%d,[VCM]:%d",
+		data[0],data[1],data[2],data[3],data[4],data[5],data[6]);
+		if(data[0]){
+			hw_info_otp.otp_valid = 1;
+			 hw_info_otp.vendor_id = data[1];
+			 hw_info_otp.year = data[2];
+			 hw_info_otp.month = data[3];
+			 hw_info_otp.day = data[4];
+			 hw_info_otp.vcm_moduleid = data[5];
+			 hw_info_otp.vcm_vendorid=data[6];
+			 write_cam_otp_info(HWID_MAIN_OTP_3,&hw_info_otp);
+		}
+	}
+
+	return 0;
+}
+
+static int cam_eeprom_write_sn_info(struct cam_eeprom_ctrl_t *e_ctrl,
+		struct cam_eeprom_memory_block_t *block)
+{
+	uint32_t  cell_index = 0;
+	uint8_t * data = NULL;
+    char cam_sn[20] = {'\0'};
+
+	pr_info("cell-index:%d",e_ctrl->soc_info.index);
+	cell_index = e_ctrl->soc_info.index;
+	data = block->mapdata;
+	if(0 == cell_index){
+		if(data[0x0B10]){
+            sprintf(cam_sn, "%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c",
+			                data[0x0B11], data[0x0B12], data[0x0B13], data[0x0B14], data[0x0B15],
+							data[0x0B16], data[0x0B17], data[0x0B18], data[0x0B19], data[0x0B1A],
+							data[0x0B1B], data[0x0B1C], data[0x0B1D], data[0x0B1E], data[0x0B1F]);
+            get_hardware_info_data(HWID_MAIN_CAM_SN, cam_sn);
+		}
+	}
+
+	if(1 == cell_index){
+		if(data[0x0710]){
+            sprintf(cam_sn, "%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c",
+			                data[0x0711], data[0x0712], data[0x0713], data[0x0714], data[0x0715],
+							data[0x0716], data[0x0717], data[0x0718], data[0x0719], data[0x071A],
+							data[0x071B], data[0x071C], data[0x071D], data[0x071E], data[0x071F]);
+            get_hardware_info_data(HWID_SUB_CAM_SN, cam_sn);
+		}
+	}
+
+	if(2 == cell_index){
+		if(data[0x0710]){
+            sprintf(cam_sn, "%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c",
+			                data[0x0711], data[0x0712], data[0x0713], data[0x0714], data[0x0715],
+							data[0x0716], data[0x0717], data[0x0718], data[0x0719], data[0x071A],
+							data[0x071B], data[0x071C], data[0x071D], data[0x071E], data[0x071F]);
+            get_hardware_info_data(HWID_MAIN_CAM_2_SN, cam_sn);
+		}
+	}
+
+	if(3 == cell_index){
+		if(data[0x0720]){
+            sprintf(cam_sn, "%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c",
+			                data[0x0721], data[0x0722], data[0x0723], data[0x0724], data[0x0725],
+							data[0x0726], data[0x0727], data[0x0728], data[0x0729], data[0x072A],
+							data[0x072B], data[0x072C], data[0x072D], data[0x072E], data[0x072F]);
+            get_hardware_info_data(HWID_MAIN_CAM_3_SN, cam_sn);
+		}
+	}
+
+	return 0;
+}
+
 /**
  * cam_eeprom_read_memory() - read map data into buffer
  * @e_ctrl:     eeprom control struct
@@ -40,7 +167,6 @@ static int cam_eeprom_read_memory(struct cam_eeprom_ctrl_t *e_ctrl,
 	}
 
 	eb_info = (struct cam_eeprom_soc_private *)e_ctrl->soc_info.soc_private;
-
 	for (j = 0; j < block->num_map; j++) {
 		CAM_DBG(CAM_EEPROM, "slave-addr = 0x%X", emap[j].saddr);
 		if (emap[j].saddr) {
@@ -354,10 +480,6 @@ static int32_t cam_eeprom_get_dev_handle(struct cam_eeprom_ctrl_t *e_ctrl,
 
 	eeprom_acq_dev.device_handle =
 		cam_create_device_hdl(&bridge_params);
-	if (eeprom_acq_dev.device_handle <= 0) {
-		CAM_ERR(CAM_EEPROM, "Can not create device handle");
-		return -EFAULT;
-	}
 	e_ctrl->bridge_intf.device_hdl = eeprom_acq_dev.device_handle;
 	e_ctrl->bridge_intf.session_hdl = eeprom_acq_dev.session_handle;
 
@@ -1289,6 +1411,8 @@ static int32_t cam_eeprom_pkt_parse(struct cam_eeprom_ctrl_t *e_ctrl, void *arg)
 			goto power_down;
 		}
 
+		rc = cam_eeprom_write_otp_info(e_ctrl,&e_ctrl->cal_data);
+		rc = cam_eeprom_write_sn_info(e_ctrl,&e_ctrl->cal_data);
 		rc = cam_eeprom_get_cal_data(e_ctrl, csl_packet);
 		rc = cam_eeprom_power_down(e_ctrl);
 		e_ctrl->cam_eeprom_state = CAM_EEPROM_ACQUIRE;
