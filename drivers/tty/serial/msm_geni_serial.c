@@ -1,3 +1,8 @@
+/*
+ * NOTE: This file has been modified by Sony Corporation.
+ * Modifications are Copyright 2018 Sony Corporation,
+ * and licensed under the license of the file.
+ */
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
@@ -240,6 +245,9 @@ struct msm_geni_serial_port {
 	enum uart_error_code uart_error;
 	struct work_struct work;
 	struct workqueue_struct *qwork;
+	/*pdx213 code for water detection by daijie at 2022/2/16 start*/
+	bool gpio_suspend_state;
+	/*pdx213 code for water detection by daijie at 2022/2/16 end*/
 };
 
 static void msm_geni_serial_worker(struct work_struct *work);
@@ -1557,6 +1565,7 @@ static int stop_rx_sequencer(struct uart_port *uport)
 		 * before issuing the cancel command to resolve the race
 		 * btw cancel RX and completion interrupt.
 		 */
+
 		if (dma_rx_status) {
 			s_irq_status = geni_read_reg_nolog(uport->membase,
 							SE_GENI_S_IRQ_STATUS);
@@ -2606,6 +2615,9 @@ static void msm_geni_serial_set_termios(struct uart_port *uport,
 	int uart_sampling;
 	int clk_freq_diff;
 
+	if (!termios->c_cflag)
+		return;
+
 	/* QUP_2.5.0 and older RUMI has sampling rate as 32 */
 	if (port->rumi_platform && port->is_console) {
 		geni_write_reg_nolog(0x21, uport->membase, GENI_SER_M_CLK_CFG);
@@ -2871,6 +2883,10 @@ static int __init msm_geni_console_setup(struct console *co, char *options)
 	}
 
 	uport = &dev_port->uport;
+	/*pdx213 code for water detection by daijie at 2022/2/16 start*/
+	if (dev_port->gpio_suspend_state == true)
+		return -ENXIO;
+	/*pdx213 code for water detection by daijie at 2022/2/16 end*/
 
 	if (unlikely(!uport->membase))
 		return -ENXIO;
@@ -3186,6 +3202,11 @@ static void msm_geni_serial_cons_pm(struct uart_port *uport,
 	if (unlikely(!uart_console(uport)))
 		return;
 
+	/*pdx213 code for water detection by daijie at 2022/2/16 start*/
+	if (msm_port->gpio_suspend_state == true)
+		return;
+	/*pdx213 code for water detection by daijie at 2022/2/16 end*/
+
 	if (new_state == UART_PM_STATE_ON && old_state == UART_PM_STATE_OFF)
 		se_geni_resources_on(&msm_port->serial_rsc);
 	else if (new_state == UART_PM_STATE_OFF &&
@@ -3239,6 +3260,72 @@ static const struct of_device_id msm_geni_device_tbl[] = {
 	{},
 };
 
+/*pdx213 code for water detection by daijie at 2022/2/16 start*/
+int msm_geni_serial_gpio_suspend(bool state)
+{
+	int ret = 0;
+	struct msm_geni_serial_port *port = NULL;
+
+	port = get_port_from_line(0, true);
+	if (IS_ERR_OR_NULL(port))
+		return -EINVAL;
+
+	if (IS_ERR_OR_NULL(port->serial_rsc.geni_gpio_suspend) ||
+		IS_ERR_OR_NULL(port->serial_rsc.geni_gpio_active))
+		return -EINVAL;
+
+	pr_err("%s-%d: gpio_suspend_state=%d, state=%d", __func__, __LINE__, port->gpio_suspend_state, state);
+
+	if (port->gpio_suspend_state^state) {
+		port->gpio_suspend_state = state;
+
+		if (state) {
+			ret = pinctrl_select_state(port->serial_rsc.geni_pinctrl, port->serial_rsc.geni_gpio_suspend);
+			if (ret < 0) {
+				pr_err("Set Suspend pin state error:%d", ret);
+			}
+		} else {
+			ret = pinctrl_select_state(port->serial_rsc.geni_pinctrl, port->serial_rsc.geni_gpio_active);
+			if (ret < 0) {
+				pr_err("Set Active pin state error:%d", ret);
+			}
+		}
+
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL(msm_geni_serial_gpio_suspend);
+
+static ssize_t geni_gpio_suspend_show(struct device *dev,
+        struct device_attribute *attr, char *buf)
+{
+    struct platform_device *pdev = to_platform_device(dev);
+    struct msm_geni_serial_port *port = platform_get_drvdata(pdev);
+    ssize_t ret = 0;
+
+    if (port->gpio_suspend_state == true)
+        ret = snprintf(buf, sizeof("1\n"), "1\n");
+    else
+        ret = snprintf(buf, sizeof("0\n"), "0\n");
+    return ret;
+}
+
+static ssize_t geni_gpio_suspend_store(struct device *dev,
+    struct device_attribute *attr, const char *buf, size_t size)
+{
+    pr_err("%s-%d: buf=%s", __func__, __LINE__, buf);
+
+    if (strnstr(buf, "1", strlen("1")))
+        msm_geni_serial_gpio_suspend(true);
+    else
+        msm_geni_serial_gpio_suspend(false);
+
+    return size;
+}
+static DEVICE_ATTR_RW(geni_gpio_suspend);
+
+/*pdx213 code for water detection by daijie at 2022/2/16 end*/
 static int msm_geni_serial_get_ver_info(struct uart_port *uport)
 {
 	int hw_ver, ret = 0;
@@ -3482,6 +3569,16 @@ static int msm_geni_serial_probe(struct platform_device *pdev)
 		}
 	}
 
+	/*pdx213 code for water detection by daijie at 2022/2/16 start*/
+	dev_port->serial_rsc.geni_gpio_suspend=
+		pinctrl_lookup_state(dev_port->serial_rsc.geni_pinctrl,
+                        PINCTRL_SLEEP);
+	if (IS_ERR_OR_NULL(dev_port->serial_rsc.geni_gpio_suspend)) {
+		dev_err(&pdev->dev, "No suspend config specified!\n");
+		return PTR_ERR(dev_port->serial_rsc.geni_gpio_suspend);
+	}
+	/*pdx213 code for water detection by daijie at 2022/2/16 end*/
+
 	if (!is_console) {
 		dev_port->geni_wake = wakeup_source_register(uport->dev,
 						dev_name(&pdev->dev));
@@ -3551,6 +3648,9 @@ static int msm_geni_serial_probe(struct platform_device *pdev)
 	device_create_file(uport->dev, &dev_attr_loopback);
 	device_create_file(uport->dev, &dev_attr_xfer_mode);
 	device_create_file(uport->dev, &dev_attr_ver_info);
+	/*pdx213 code for water detection by daijie at 2022/2/16 start*/
+	device_create_file(uport->dev, &dev_attr_geni_gpio_suspend);
+	/*pdx213 code for water detection by daijie at 2022/2/16 end*/
 	msm_geni_serial_debug_init(uport, is_console);
 	dev_port->port_setup = false;
 	dev_port->uart_error = UART_ERROR_DEFAULT;
@@ -3575,6 +3675,8 @@ static int msm_geni_serial_probe(struct platform_device *pdev)
 	if (!uart_console(uport))
 		spin_lock_init(&dev_port->rx_lock);
 
+	if (!uart_console(uport))
+		spin_lock_init(&dev_port->rx_lock);
 	/*
 	 * Earlyconsole to kernel console will switch happen after
 	 * uart_add_one_port. Hence marking is_earlycon to false here.
@@ -3697,6 +3799,11 @@ static int msm_geni_serial_runtime_resume(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct msm_geni_serial_port *port = platform_get_drvdata(pdev);
 	int ret = 0;
+	/*pdx213 code for water detection by daijie at 2022/2/16 start*/
+	if (port->gpio_suspend_state == true)
+		return ret;
+	/*pdx213 code for water detection by daijie at 2022/2/16 end*/
+
 
 	/*
 	 * Do an unconditional relax followed by a stay awake in case the
