@@ -1,3 +1,8 @@
+/*
+ * NOTE: This file has been modified by Sony Corporation.
+ * Modifications are Copyright 2022 Sony Corporation,
+ * and licensed under the license of the file.
+ */
 #ifndef _FP_LINUX_DIRVER_H_
 #define _FP_LINUX_DIRVER_H_
 #include <linux/module.h>

@@ -3324,8 +3324,8 @@ static ssize_t geni_gpio_suspend_store(struct device *dev,
     return size;
 }
 static DEVICE_ATTR_RW(geni_gpio_suspend);
-
 /*pdx213 code for water detection by daijie at 2022/2/16 end*/
+
 static int msm_geni_serial_get_ver_info(struct uart_port *uport)
 {
 	int hw_ver, ret = 0;
@@ -3804,6 +3804,11 @@ static int msm_geni_serial_runtime_resume(struct device *dev)
 		return ret;
 	/*pdx213 code for water detection by daijie at 2022/2/16 end*/
 
+
+	/*pdx213 code for water detection by daijie at 2022/2/16 start*/
+	if (port->gpio_suspend_state == true)
+		return ret;
+	/*pdx213 code for water detection by daijie at 2022/2/16 end*/
 
 	/*
 	 * Do an unconditional relax followed by a stay awake in case the

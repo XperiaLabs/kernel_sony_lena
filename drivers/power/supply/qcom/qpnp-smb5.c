@@ -836,15 +836,19 @@ static int smb5_parse_sdam(struct smb5 *chip, struct device_node *node)
 
 /*pdx213 code for water detection by daijie at 2022/2/16 start*/
 #if defined(CONFIG_SOMC_CHARGER_EXTENSION)
+
 static int smb5_parse_gpio(struct smb5 *chip, struct device_node *node)
 {
 	struct smb_charger *chg = &chip->chg;
+
+	pr_err("%s-%d", __func__, __LINE__);
 
 	chg->serial_pinctrl = devm_pinctrl_get(chg->dev);
 	if (IS_ERR_OR_NULL(chg->serial_pinctrl)) {
 		pr_err("serial_pinctrl is NULL!\n");
 		return 0;
 	}
+	pr_err("%s-%d", __func__, __LINE__);
 
 	chg->serial_gpio_suspend=
 		pinctrl_lookup_state(chg->serial_pinctrl,

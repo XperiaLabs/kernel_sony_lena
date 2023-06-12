@@ -49,7 +49,7 @@
 	((typec_mode == POWER_SUPPLY_TYPEC_SOURCE_MEDIUM	\
 	|| typec_mode == POWER_SUPPLY_TYPEC_SOURCE_HIGH)	\
 	&& (!chg->typec_legacy || chg->typec_legacy_use_rp_icl))
-
+static int rerun_APSD_count = 0;
 static void update_sw_icl_max(struct smb_charger *chg, int pst);
 static int smblib_get_prop_typec_mode(struct smb_charger *chg);
 static struct drm_panel *active_panel;
@@ -1217,6 +1217,10 @@ static const struct apsd_result *smblib_update_usb_type(struct smb_charger *chg)
 
 	smblib_dbg(chg, PR_MISC, "APSD=%s PD=%d QC3P5=%d\n",
 			apsd_result->name, chg->pd_active, chg->qc3p5_detected);
+	if((rerun_APSD_count < 2)&&(strncmp(apsd_result->name,"SDP",3) == 0) ){
+    	    schedule_delayed_work(&chg->somc_rerun_apsd_if_required_work, msecs_to_jiffies(300));
+          	rerun_APSD_count++;
+    }
 	return apsd_result;
 }
 
@@ -6777,7 +6781,21 @@ unlock:
 	mutex_unlock(&chg->typec_lock);
 	return rc;
 }
+static void smb_somc_rerun_apsd_if_required_work(struct work_struct *work)
+{
+	u8 stat;
+	int rc = 0;
+	struct smb_charger *chg = container_of(work, struct smb_charger,
+                    	somc_rerun_apsd_if_required_work.work);
+	smblib_rerun_apsd_if_required(chg);
+	vote(chg->usb_icl_votable, USB_PSY_VOTER, false, 0);
 
+	msleep(300);
+
+	rc = smblib_read(chg, APSD_STATUS_REG, &stat);
+	smblib_handle_apsd_done(chg,
+		(bool)(stat & APSD_DTC_STATUS_DONE_BIT));
+}
 static void smblib_typec_role_check_work(struct work_struct *work)
 {
 	struct smb_charger *chg = container_of(work, struct smb_charger,
@@ -9046,6 +9064,7 @@ int smblib_init(struct smb_charger *chg)
 	INIT_DELAYED_WORK(&chg->pl_enable_work, smblib_pl_enable_work);
 	INIT_DELAYED_WORK(&chg->uusb_otg_work, smblib_uusb_otg_work);
 	INIT_DELAYED_WORK(&chg->bb_removal_work, smblib_bb_removal_work);
+	INIT_DELAYED_WORK(&chg->somc_rerun_apsd_if_required_work,smb_somc_rerun_apsd_if_required_work);
 	INIT_DELAYED_WORK(&chg->lpd_ra_open_work, smblib_lpd_ra_open_work);
 	INIT_DELAYED_WORK(&chg->lpd_detach_work, smblib_lpd_detach_work);
 	INIT_DELAYED_WORK(&chg->thermal_regulation_work,
@@ -9243,6 +9262,7 @@ int smblib_deinit(struct smb_charger *chg)
 		cancel_work_sync(&chg->jeita_update_work);
 		cancel_work_sync(&chg->pl_update_work);
 		cancel_work_sync(&chg->dcin_aicl_work);
+		cancel_delayed_work_sync(&chg->somc_rerun_apsd_if_required_work);
 		cancel_work_sync(&chg->cp_status_change_work);
 		cancel_delayed_work_sync(&chg->clear_hdc_work);
 		cancel_delayed_work_sync(&chg->icl_change_work);
