@@ -5,9 +5,16 @@
  *	Andrea Paterniani <a.paterniani@swapp-eng.it>
  * Copyright (C) 2007 David Brownell (simplification, cleanup)
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License Version 2
- * as published by the Free Software Foundation.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
  */
 /*
  * NOTE: This file has been modified by Sony Corporation.
@@ -17,26 +24,29 @@
 
 /*
 *
-*  et613.spi.c
+*  etxxx_fp.c
 *  Date: 2016/03/16
 *  Version: 0.9.0.1
-*  Revise Date:  2017/7/2
-*  Copyright (C) 2007-2017 Egis Technology Inc.
+*  Revise Date:  2020/11/25
+*  Copyright (C) 2007-2019 Egis Technology Inc.
+* -----------------  version history ------------------------
+* <Author>		<Data>			<Desc>
+*Kevin.Liang	20181102		add powersetup for IOC
+*Jacob.Kung		20201125		modify for support all sensor
+*Jacob.Kung		20201126		modify struct define naming
+*Jacob.Kung		20201130		add check_ioctl_permission
+*Jacob.Kung		20201207		register platform driver with MTK platform
+* -----------------------------------------------------------
 *
-*/
-
-
+**/
+#include <linux/version.h>
 #include <linux/interrupt.h>
-#ifdef CONFIG_OF
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
-#endif
-
 #include <linux/gpio.h>
 #include <linux/mutex.h>
 #include <linux/list.h>
-//#include <linux/pm_runtime.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/gpio.h>

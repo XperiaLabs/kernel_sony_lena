@@ -9,6 +9,11 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+/*
+ * NOTE: This file has been modified by Sony Corporation.
+ * Modifications are Copyright 2021 Sony Corporation,
+ * and licensed under the license of the file.
+ */
 
 #include "sec_ts.h"
 
@@ -682,7 +687,8 @@ int sec_ts_firmware_update_bl(struct sec_ts_data *ts)
 	int result = -1;
 	int ret = 0;
 
-	disable_irq(ts->client->irq);
+	pr_err("***%s\n", __func__);
+	sec_ts_set_irq(ts, false);
 
 	snprintf(fw_path, SEC_TS_MAX_FW_PATH, "%s", SEC_TS_DEFAULT_BL_NAME);
 
@@ -700,7 +706,8 @@ int sec_ts_firmware_update_bl(struct sec_ts_data *ts)
 
 err_request_fw:
 	release_firmware(fw_entry);
-	enable_irq(ts->client->irq);
+	pr_err("***%s\n", __func__);
+	sec_ts_set_irq(ts, true);
 
 	return result;
 }
@@ -770,7 +777,8 @@ int sec_ts_firmware_update_on_probe(struct sec_ts_data *ts, bool force_update)
 	else
 		return 0;
 
-	disable_irq(ts->client->irq);
+	pr_err("***%s\n", __func__);
+	sec_ts_set_irq(ts, false);
 
 	/* read cal status */
 	ts->cal_status = sec_ts_read_calibration_report(ts);
@@ -818,7 +826,8 @@ int sec_ts_firmware_update_on_probe(struct sec_ts_data *ts, bool force_update)
 
 err_request_fw:
 	release_firmware(fw_entry);
-	enable_irq(ts->client->irq);
+	pr_err("***%s\n", __func__);
+	sec_ts_set_irq(ts, true);
 	return result;
 }
 
@@ -830,7 +839,8 @@ static int sec_ts_load_fw_from_bin(struct sec_ts_data *ts)
 	int restore_cal = 0;
 
 	if (ts->client->irq)
-		disable_irq(ts->client->irq);
+		pr_err("***%s\n", __func__);
+	sec_ts_set_irq(ts, false);
 
 	if (!ts->plat_data->firmware_name)
 		snprintf(fw_path, SEC_TS_MAX_FW_PATH, "%s", SEC_TS_DEFAULT_FW_NAME);
@@ -859,7 +869,8 @@ static int sec_ts_load_fw_from_bin(struct sec_ts_data *ts)
 err_request_fw:
 	release_firmware(fw_entry);
 	if (ts->client->irq)
-		enable_irq(ts->client->irq);
+		pr_err("***%s\n", __func__);
+	sec_ts_set_irq(ts, true);
 
 	return error;
 }
@@ -951,7 +962,8 @@ static int sec_ts_load_fw_from_ffu(struct sec_ts_data *ts)
 	int result = -1;
 	int ret = 0;
 
-	disable_irq(ts->client->irq);
+	pr_err("***%s\n", __func__);
+	sec_ts_set_irq(ts, false);
 
 	input_info(true, ts->dev, "%s: Load firmware : %s\n", __func__, fw_path);
 
@@ -974,7 +986,8 @@ static int sec_ts_load_fw_from_ffu(struct sec_ts_data *ts)
 
 err_request_fw:
 	release_firmware(fw_entry);
-	enable_irq(ts->client->irq);
+	pr_err("***%s\n", __func__);
+	sec_ts_set_irq(ts, true);
 	return result;
 }
 

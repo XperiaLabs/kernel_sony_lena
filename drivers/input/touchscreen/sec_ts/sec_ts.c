@@ -43,6 +43,23 @@ static int sec_ts_dsi_panel_notifier_cb(struct notifier_block *self, unsigned lo
 
 	int sec_ts_read_information(struct sec_ts_data *ts);
 
+void sec_ts_set_irq(struct sec_ts_data *ts, bool enable)
+{
+	pr_err("ts->client->irq [%d]\n", ts->irq_status);
+	if (enable && !ts->irq_status) {
+		enable_irq(ts->client->irq);
+		ts->irq_status = true;
+		input_info(true, &ts->client->dev, "Change irq enabled\n");
+	} else if (!enable && ts->irq_status) {
+		disable_irq_nosync(ts->client->irq);
+		ts->irq_status = false;
+		input_info(true, &ts->client->dev, "Change irq was disable\n");
+	} else {
+		input_info(true, &ts->client->dev, "no irq change (%s)\n",
+		     ts->irq_status ? "enable" : "disable");
+	}
+}
+
 int sec_ts_i2c_write(struct sec_ts_data *ts, u8 reg, u8 *data, int len)
 {
 	u8 buf[I2C_WRITE_BUFFER_SIZE + 1];
@@ -1253,6 +1270,32 @@ static int sec_ts_pinctrl_configure(struct sec_ts_data *ts, bool enable)
 
 }
 
+int sec_ts_get_power_status(void *data)
+{
+	struct sec_ts_data *ts = (struct sec_ts_data *)data;
+	const struct sec_ts_plat_data *pdata = ts->plat_data;
+	struct regulator *regulator_dvdd = NULL;
+	int ret = 0;
+
+	regulator_dvdd = regulator_get(NULL, pdata->regulator_dvdd);
+	if (IS_ERR_OR_NULL(regulator_dvdd)) {
+		input_err(true, &ts->client->dev, "%s: Failed to get %s regulator.\n",
+				__func__, pdata->regulator_dvdd);
+		ret = PTR_ERR(regulator_dvdd);
+		goto error;
+	}
+
+	input_err(true, &ts->client->dev, "%s:  dvdd:%s\n", __func__,
+			regulator_is_enabled(regulator_dvdd) ? "on" : "off");
+
+	ret = regulator_is_enabled(regulator_dvdd) ? 0 : 1;
+
+error:
+	regulator_put(regulator_dvdd);
+
+	return ret;
+}
+
 int sec_ts_power(void *data, bool on)
 {
 	struct sec_ts_data *ts = (struct sec_ts_data *)data;
@@ -1993,6 +2036,8 @@ static int sec_ts_probe(struct i2c_client *client, const struct i2c_device_id *i
 #endif
 	sec_ts_fn_init(ts);
 
+	ts->irq_status = true;
+	sec_ts_set_irq(ts, false);
 
 #ifdef SEC_TS_SUPPORT_CUSTOMLIB
 	sec_ts_check_custom_library(ts);
@@ -2100,7 +2145,7 @@ void sec_ts_unlocked_release_all_finger(struct sec_ts_data *ts)
 					ts->tspicid_val, ts->coord[i].palm_count);
 
 			do_gettimeofday(&ts->time_released[i]);
-			
+
 			if (ts->time_longest < (ts->time_released[i].tv_sec - ts->time_pressed[i].tv_sec))
 				ts->time_longest = (ts->time_released[i].tv_sec - ts->time_pressed[i].tv_sec);
 		}
@@ -2152,7 +2197,7 @@ void sec_ts_locked_release_all_finger(struct sec_ts_data *ts)
 					ts->cal_status, ts->tspid_val, ts->tspicid_val, ts->coord[i].palm_count);
 
 			do_gettimeofday(&ts->time_released[i]);
-			
+
 			if (ts->time_longest < (ts->time_released[i].tv_sec - ts->time_pressed[i].tv_sec))
 				ts->time_longest = (ts->time_released[i].tv_sec - ts->time_pressed[i].tv_sec);
 		}
@@ -2248,7 +2293,7 @@ static void sec_ts_reset_work(struct work_struct *work)
 				data[i * 2 + 3] = (ts->rect_data[i] >> 8) & 0xFF;
 			}
 
-			disable_irq(ts->client->irq);
+			sec_ts_set_irq(ts, false);
 			ret = ts->sec_ts_i2c_write(ts, SEC_TS_CMD_CUSTOMLIB_WRITE_PARAM, &data[0], 10);
 			if (ret < 0)
 				input_err(true, &ts->client->dev, "%s: Failed to write offset\n", __func__);
@@ -2256,7 +2301,7 @@ static void sec_ts_reset_work(struct work_struct *work)
 			ret = ts->sec_ts_i2c_write(ts, SEC_TS_CMD_CUSTOMLIB_NOTIFY_PACKET, NULL, 0);
 			if (ret < 0)
 				input_err(true, &ts->client->dev, "%s: Failed to send notify\n", __func__);
-			enable_irq(ts->client->irq);
+			sec_ts_set_irq(ts, true);
 		}
 	}
 	ts->reset_is_on_going = false;
@@ -2276,9 +2321,9 @@ static void sec_ts_read_info_work(struct work_struct *work)
 	input_info(true, &ts->client->dev, "%s\n", __func__);
 
 	/* run self-test */
-	disable_irq(ts->client->irq);
+	sec_ts_set_irq(ts, false);
 	execute_selftest(ts, false);
-	enable_irq(ts->client->irq);
+	sec_ts_set_irq(ts, true);
 
 	input_info(true, &ts->client->dev, "%s: %02X %02X %02X %02X\n",
 		__func__, ts->ito_test[0], ts->ito_test[1]
@@ -2453,7 +2498,7 @@ static int sec_ts_remove(struct i2c_client *client)
 	cancel_delayed_work_sync(&ts->work_read_info);
 	flush_delayed_work(&ts->work_read_info);
 
-	disable_irq_nosync(ts->client->irq);
+	sec_ts_set_irq(ts, false);
 	free_irq(ts->client->irq, ts);
 	input_info(true, &ts->client->dev, "%s: irq disabled\n", __func__);
 
@@ -2517,7 +2562,7 @@ int sec_ts_stop_device(struct sec_ts_data *ts)
 		goto out;
 	}
 
-	disable_irq(ts->client->irq);
+	sec_ts_set_irq(ts, false);
 
 	ts->power_status = SEC_TS_STATE_POWER_OFF;
 	if (ts->input_dev == NULL){
@@ -2639,7 +2684,7 @@ err:
 	if (ret < 0)
 		input_err(true, &ts->client->dev, "%s: fail to write Sense_on\n", __func__);
 
-	enable_irq(ts->client->irq);
+	sec_ts_set_irq(ts, true);
 
 out:
 	mutex_unlock(&ts->device_mutex);

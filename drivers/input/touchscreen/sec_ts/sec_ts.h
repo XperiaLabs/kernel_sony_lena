@@ -736,6 +736,7 @@ struct sec_ts_data {
 	u16 saved_data_x[10];
 	u16 saved_data_y[10];
 	int rejection_mode;
+	bool irq_status;
 
 	u32 circle_range_p[SEC_TS_GRIP_REJECTION_BORDER_NUM_PORTRAIT];
 	u32 circle_range_l[SEC_TS_GRIP_REJECTION_BORDER_NUM_LANDSCAPE];
@@ -814,6 +815,7 @@ typedef struct {
 } fw_chunk;
 
 int sec_ts_power(void *data, bool on);
+int sec_ts_get_power_status(void *data);
 int sec_ts_stop_device(struct sec_ts_data *ts);
 int sec_ts_start_device(struct sec_ts_data *ts);
 int sec_ts_set_lowpowermode(struct sec_ts_data *ts, u8 mode);
@@ -845,6 +847,8 @@ int execute_selftest(struct sec_ts_data *ts, bool save_result);
 void sec_ts_run_rawdata_all(struct sec_ts_data *ts, bool full_read);
 
 void sec_ts_reinit(struct sec_ts_data *ts);
+
+void sec_ts_set_irq(struct sec_ts_data *ts, bool enable);
 
 #if (1)//!defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 
