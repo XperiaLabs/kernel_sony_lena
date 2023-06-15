@@ -10,9 +10,16 @@ smb1396: qcom,smb1396@34 {
 	qcom,periph-map = <0x6 0x26 0x27>;
 	status = "disabled";
 
+	smb1396_revid: qcom,revid {
+		compatible = "qcom,qpnp-revid";
+		reg = <0x100>;
+	};
+
 	smb1396_div2_cp_master: qcom,div2_cp {
 		compatible = "qcom,smb1396-div2-cp-master";
-		#io-channel-cells = <1>;
+		qcom,pmic-revid = <&smb1396_revid>;
+		io-channels = <&pm7250b_vadc ADC_AMUX_THM2>;
+		io-channel-names = "die_temp";
 		interrupts = <0x26 0x1 IRQ_TYPE_EDGE_RISING>,
 			     <0x26 0x3 IRQ_TYPE_EDGE_RISING>,
 			     <0x26 0x5 IRQ_TYPE_EDGE_RISING>,
@@ -27,7 +34,6 @@ smb1396: qcom,smb1396@34 {
 				  "div2-ilim",
 				  "div2-win-uv",
 				  "div2-win-ov";
-		qcom,div2-cp-min-ilim-ua = <1000000>;
 		status = "disabled";
 	};
 };
@@ -40,7 +46,6 @@ smb1396_slave: qcom,smb1396@35 {
 	status = "disabled";
 	smb1396_div2_cp_slave: qcom,div2_cp_slave {
 		compatible = "qcom,smb1396-div2-cp-slave";
-		#io-channel-cells = <1>;
 		status = "disabled";
 	};
 };

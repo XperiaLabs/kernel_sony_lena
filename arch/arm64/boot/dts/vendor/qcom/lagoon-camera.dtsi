@@ -22,7 +22,7 @@
 		mipi-csi-vdd2-supply = <&L22A>;
 		rgltr-cntrl-support;
 		rgltr-min-voltage = <0 0 880000 1200000>;
-		rgltr-max-voltage = <0 0 880000 1200000>;
+		rgltr-max-voltage = <0 0 1049000 1305000>;
 		rgltr-load-current = <0 0 80000 80000>;
 		clocks = <&camcc CAM_CC_CPHY_RX_CLK_SRC>,
 			<&camcc CAM_CC_CSIPHY0_CLK>,
@@ -57,7 +57,7 @@
 		mipi-csi-vdd2-supply = <&L22A>;
 		rgltr-cntrl-support;
 		rgltr-min-voltage = <0 0 880000 1200000>;
-		rgltr-max-voltage = <0 0 880000 1200000>;
+		rgltr-max-voltage = <0 0 1049000 1305000>;
 		rgltr-load-current = <0 0 80000 80000>;
 		clocks = <&camcc CAM_CC_CPHY_RX_CLK_SRC>,
 			<&camcc CAM_CC_CSIPHY1_CLK>,
@@ -92,7 +92,7 @@
 		mipi-csi-vdd2-supply = <&L22A>;
 		rgltr-cntrl-support;
 		rgltr-min-voltage = <0 0 880000 1200000>;
-		rgltr-max-voltage = <0 0 880000 1200000>;
+		rgltr-max-voltage = <0 0 1049000 1305000>;
 		rgltr-load-current = <0 0 80000 80000>;
 		clocks = <&camcc CAM_CC_CPHY_RX_CLK_SRC>,
 			<&camcc CAM_CC_CSIPHY2_CLK>,
@@ -127,7 +127,7 @@
 		mipi-csi-vdd2-supply = <&L22A>;
 		rgltr-cntrl-support;
 		rgltr-min-voltage = <0 0 880000 1200000>;
-		rgltr-max-voltage = <0 0 880000 1200000>;
+		rgltr-max-voltage = <0 0 1049000 1305000>;
 		rgltr-load-current = <0 0 80000 80000>;
 		clocks = <&camcc CAM_CC_CPHY_RX_CLK_SRC>,
 			<&camcc CAM_CC_CSIPHY3_CLK>,
@@ -262,14 +262,18 @@
 		clock-cntl-level = "lowsvs";
 		clock-rates = <0 37500000>;
 		pinctrl-names = "cam_default", "cam_suspend";
-		pinctrl-0 = <&cci2_active>;
-		pinctrl-1 = <&cci2_suspend>;
+		pinctrl-0 = <&cci2_active &cci3_active>;
+		pinctrl-1 = <&cci2_suspend &cci3_suspend>;
 		gpios = <&tlmm 43 0>,
-			<&tlmm 44 0>;
-		gpio-req-tbl-num = <0 1>;
-		gpio-req-tbl-flags = <1 1>;
+			<&tlmm 44 0>,
+			<&tlmm 2 0>,
+			<&tlmm 3 0>;
+		gpio-req-tbl-num = <0 1 2 3>;
+		gpio-req-tbl-flags = <1 1 1 1>;
 		gpio-req-tbl-label = "CCI_I2C_DATA2",
-			"CCI_I2C_CLK2";
+			"CCI_I2C_CLK2",
+			"CCI_I2C_DATA3",
+			"CCI_I2C_CLK3";
 
 		i2c_freq_100Khz_cci1: qcom,i2c_standard_mode {
 			hw-thigh = <201>;
@@ -341,7 +345,8 @@
 			compatible = "qcom,msm-cam-smmu-cb";
 			iommus = <&apps_smmu 0xD40 0x20>,
 				<&apps_smmu 0xD60 0x20>;
-			cam-smmu-label = "lrme";
+			label = "lrme";
+			qcom,iommu-dma-addr-pool = <0x7400000 0xd8c00000>;
 			lrme_iova_mem_map: iova-mem-map {
 				iova-mem-region-shared {
 					/* Shared region is 100MB long */
@@ -368,7 +373,8 @@
 				<&apps_smmu 0x840 0x0>,
 				<&apps_smmu 0x860 0xc0>,
 				<&apps_smmu 0x880 0x0>;
-			cam-smmu-label = "ife";
+			label = "ife";
+			qcom,iommu-dma-addr-pool = <0x7400000 0xd8c00000>;
 			ife_iova_mem_map: iova-mem-map {
 				/* IO region is approximately 3.4 GB */
 				iova-mem-region-io {
@@ -385,7 +391,8 @@
 			compatible = "qcom,msm-cam-smmu-cb";
 			iommus = <&apps_smmu 0xD00 0x20>,
 				<&apps_smmu 0xD20 0x20>;
-			cam-smmu-label = "jpeg";
+			label = "jpeg";
+			qcom,iommu-dma-addr-pool = <0x7400000 0xd8c00000>;
 			jpeg_iova_mem_map: iova-mem-map {
 				/* IO region is approximately 3.4 GB */
 				iova-mem-region-io {
@@ -407,9 +414,13 @@
 		msm_cam_smmu_icp {
 			compatible = "qcom,msm-cam-smmu-cb";
 			iommus = <&apps_smmu 0xCA2 0x0>,
+				<&apps_smmu 0xC40 0x20>,
+				<&apps_smmu 0xC60 0x20>,
 				<&apps_smmu 0xCC0 0x20>,
 				<&apps_smmu 0xCE0 0x20>;
-			cam-smmu-label = "icp";
+			label = "icp";
+			qcom,iommu-dma-addr-pool = <0x10c00000 0xee300000>;
+			iova-region-discard = <0xdff00000 0x300000>;
 			icp_iova_mem_map: iova-mem-map {
 				iova-mem-region-firmware {
 					/* Firmware region is 5MB */
@@ -440,11 +451,12 @@
 				};
 
 				iova-mem-region-io {
-					/* IO region is approximately 3 GB */
+					/* IO region is approximately 3.7 GB */
 					iova-region-name = "io";
 					iova-region-start = <0x10C00000>;
-					iova-region-len = <0xCF300000>;
+					iova-region-len = <0xee300000>;
 					iova-region-id = <0x3>;
+					iova-region-discard = <0xdff00000 0x300000>;
 					status = "ok";
 				};
 
@@ -463,7 +475,8 @@
 		msm_cam_smmu_cpas_cdm {
 			compatible = "qcom,msm-cam-smmu-cb";
 			iommus = <&apps_smmu 0xC80 0x0>;
-			cam-smmu-label = "cpas-cdm0";
+			label = "cpas-cdm0";
+			qcom,iommu-dma-addr-pool = <0x7400000 0xd8c00000>;
 			cpas_cdm_iova_mem_map: iova-mem-map {
 				iova-mem-region-io {
 					/* IO region is approximately 3.4 GB */
@@ -478,7 +491,7 @@
 
 		msm_cam_smmu_secure {
 			compatible = "qcom,msm-cam-smmu-cb";
-			cam-smmu-label = "cam-secure";
+			label = "cam-secure";
 			qcom,secure-cb;
 		};
 
@@ -593,6 +606,7 @@
 		clock-names-option =  "ife_dsp_clk";
 		clocks-option = <&camcc CAM_CC_IFE_0_DSP_CLK>;
 		clock-rates-option = <600000000>;
+		qcom,cam-cx-ipeak = <&cx_ipeak_lm 3>;
 		status = "ok";
 	};
 
@@ -662,6 +676,7 @@
 		clock-names-option =  "ife_dsp_clk";
 		clocks-option = <&camcc CAM_CC_IFE_1_DSP_CLK>;
 		clock-rates-option = <600000000>;
+		qcom,cam-cx-ipeak = <&cx_ipeak_lm 3>;
 		status = "ok";
 	};
 
@@ -731,6 +746,8 @@
 		clock-names-option =  "ife_dsp_clk";
 		clocks-option = <&camcc CAM_CC_IFE_2_DSP_CLK>;
 		clock-rates-option = <600000000>;
+		dsp-disabled;
+		qcom,cam-cx-ipeak = <&cx_ipeak_lm 3>;
 		status = "ok";
 	};
 
@@ -791,6 +808,7 @@
 			<600000000 0>;
 		clock-cntl-level = "lowsvs", "svs", "svs_l1", "turbo";
 		src-clock-name = "ife_clk_src";
+		qcom,cam-cx-ipeak = <&cx_ipeak_lm 3>;
 		status = "ok";
 	};
 
@@ -802,6 +820,7 @@
 		num-a5 = <1>;
 		num-ipe = <1>;
 		num-bps = <1>;
+		icp_pc_en;
 		status = "ok";
 	};
 
@@ -871,6 +890,7 @@
 			<0 0 0 0 600000000>;
 		clock-cntl-level = "lowsvs", "svs",
 			"svs_l1", "nominal", "turbo";
+		qcom,cam-cx-ipeak = <&cx_ipeak_lm 3>;
 		status = "ok";
 	};
 
@@ -903,6 +923,7 @@
 			<0 0 0 0 600000000>;
 		clock-cntl-level = "lowsvs", "svs",
 			"svs_l1", "nominal", "turbo";
+		qcom,cam-cx-ipeak = <&cx_ipeak_lm 3>;
 		status = "ok";
 	};
 
@@ -1038,6 +1059,7 @@
 			<0 0 0 80000000 0 0>;
 		clock-cntl-level = "suspend", "lowsvs", "svs",
 			"svs_l1", "nominal", "turbo";
+		qcom,cam-cx-ipeak = <&cx_ipeak_lm 3>;
 		qcom,msm-bus,name = "cam_ahb";
 		qcom,msm-bus,num-cases = <7>;
 		qcom,msm-bus,num-paths = <1>;
@@ -1255,7 +1277,7 @@
 					traffic-data =
 					<CAM_CPAS_PATH_DATA_IFE_RDI_ALL>;
 					traffic-transaction-type =
-					<CAM_CPAS_TRANSACTION_READ>;
+					<CAM_CPAS_TRANSACTION_WRITE>;
 					constituent-paths =
 					<CAM_CPAS_PATH_DATA_IFE_RDI0
 					CAM_CPAS_PATH_DATA_IFE_RDI1
@@ -1271,7 +1293,7 @@
 					traffic-data =
 					<CAM_CPAS_PATH_DATA_IFE_RDI_ALL>;
 					traffic-transaction-type =
-					<CAM_CPAS_TRANSACTION_READ>;
+					<CAM_CPAS_TRANSACTION_WRITE>;
 					constituent-paths =
 					<CAM_CPAS_PATH_DATA_IFE_RDI0
 					CAM_CPAS_PATH_DATA_IFE_RDI1
