@@ -10,7 +10,6 @@
 #include <linux/netdevice.h>
 #include <linux/skbuff.h>
 #include <linux/timer.h>
-#include <linux/pm_wakeup.h>
 
 #define MAX_MQ_NUM 16
 #define MAX_CLIENT_NUM 2

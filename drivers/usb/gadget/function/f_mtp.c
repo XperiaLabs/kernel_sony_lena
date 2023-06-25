@@ -364,6 +364,20 @@ struct mtp_ext_config_desc {
 	struct mtp_ext_config_desc_function    function;
 };
 
+static struct mtp_ext_config_desc mtp_ext_config_desc = {
+	.header = {
+		.dwLength = __constant_cpu_to_le32(sizeof(mtp_ext_config_desc)),
+		.bcdVersion = __constant_cpu_to_le16(0x0100),
+		.wIndex = __constant_cpu_to_le16(4),
+		.bCount = 1,
+	},
+	.function = {
+		.bFirstInterfaceNumber = 0,
+		.bInterfaceCount = 1,
+		.compatibleID = { 'M', 'T', 'P' },
+	},
+};
+
 struct mtp_device_status {
 	__le16	wLength;
 	__le16	wCode;
@@ -1922,10 +1936,6 @@ struct usb_function_instance *alloc_inst_mtp_ptp(bool mtp_config)
 		return ERR_PTR(-ENOMEM);
 	fi_mtp->func_inst.set_inst_name = mtp_set_inst_name;
 	fi_mtp->func_inst.free_func_inst = mtp_free_inst;
-	if (mtp_config)
-		memcpy(fi_mtp->mtp_ext_compat_id, "MTP", 3);
-	else
-		memcpy(fi_mtp->mtp_ext_compat_id, "PTP", 3);
 
 	fi_mtp->mtp_os_desc.ext_compat_id = fi_mtp->mtp_ext_compat_id;
 	INIT_LIST_HEAD(&fi_mtp->mtp_os_desc.ext_prop);

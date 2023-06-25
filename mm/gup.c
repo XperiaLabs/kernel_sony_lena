@@ -729,9 +729,10 @@ static long __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
 				continue;
 			}
 		}
-          
+
 		if (should_force_cow_break(vma, foll_flags))
 			foll_flags |= FOLL_WRITE;
+
 retry:
 		/*
 		 * If we have a pending SIGKILL, don't keep faulting pages and
