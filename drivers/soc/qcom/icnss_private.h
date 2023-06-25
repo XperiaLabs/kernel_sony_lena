@@ -397,6 +397,7 @@ struct icnss_priv {
 	char crash_reason[SUBSYS_CRASH_REASON_LEN];
 	wait_queue_head_t wlan_pdr_debug_q;
 	int data_ready;
+	unsigned long device_config;
 };
 
 struct icnss_reg_info {
