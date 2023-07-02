@@ -12,6 +12,7 @@
 #include <dt-bindings/soc/qcom,ipcc.h>
 #include <dt-bindings/soc/qcom,dcc_v2.h>
 #include <dt-bindings/msm/msm-bus-ids.h>
+#include "hardware_info.dtsi"
 
 #define MHZ_TO_MBPS(mhz, w) ((mhz * 1000000 * w) / (1024 * 1024))
 #define BW_OPP_ENTRY(mhz, w) opp-mhz {opp-hz = /bits/ 64 <MHZ_TO_MBPS(mhz, w)>;}
@@ -325,7 +326,7 @@
 	};
 
 	chosen {
-		bootargs = "rcupdate.rcu_expedited=1 rcu_nocbs=0-7 earlycon=msm_geni_serial,0x98c000 kpti=off";
+		bootargs = "rcupdate.rcu_expedited=1 rcu_nocbs=0-7 kpti=off";
 	};
 
 	soc: soc { };
@@ -460,6 +461,11 @@
 			label = "cont_splash_region";
 		};
 
+		disp_rdump_memory: disp_rdump_region@0xa0000000 {
+			reg = <0x0 0xA0000000 0x0 0x02300000>;
+			label = "disp_rdump_region";
+		};
+
 		dfps_data_memory: dfps_data_region {
 			reg = <0x0 0xA2300000 0x0 0x0100000>;
 			label = "dfps_data_region";
@@ -494,6 +500,39 @@
 			alignment = <0x0 0x400000>;
 			size = <0x0 0x2000000>;
 			linux,cma-default;
+		};
+
+		debug_region: debug_region@ffb00000 {
+			compatible = "removed-dma-pool", "qcom,debug_memory";
+			no-map;
+			reg = <0 0xffb00000 0 0xc0000>;
+			label = "debug_mem";
+		};
+
+		last_log_region: last_log_region@ffbc0000 {
+			compatible = "removed-dma-pool", "qcom,last_log_memory";
+			no-map;
+			reg = <0 0xffbc0000 0 0x40000>;
+			label = "last_log";
+			phandle = "log";
+		};
+
+		ramoops: ramoops@ffc00000 {
+			compatible = "removed-dma-pool", "ramoops";
+			no-map;
+			reg = <0 0xffc00000 0 0x00100000>;
+			record-size = <0x1000>;
+			console-size = <0x40000>;
+			ftrace-size = <0x0>;
+			msg-size = <0x20000 0x20000>;
+			cc-size = <0x0>;
+		};
+
+		cmdline_region: cmdline_region@ffd00000 {
+			compatible = "removed-dma-pool", "cmdline_region";
+			no-map;
+			reg = <0 0xffd00000 0 0x1000>;
+			label = "cmdline_region";
 		};
 	};
 };
@@ -3685,6 +3724,50 @@
 		iommus = <&apps_smmu 0x0442 0x0>;
 		qcom,iommu-dma-addr-pool = <0x40000000 0x20000000>;
 	};
+
+	restart-reason {
+		compatible = "qcom,restart-reason";
+		unknown {
+			cmd = "unknown";
+			reg-val = <0x00 0x77665501>;
+		};
+
+		recovery {
+			cmd = "recovery";
+			reg-val = <0x01 0x77665500>;
+			reboot-cmd;
+		};
+
+		bootloader {
+			cmd = "bootloader";
+			reg-val = <0x02 0x77665500>;
+			reboot-cmd;
+		};
+
+		rtc {
+			cmd = "rtc";
+			reg-val = <0x03 0x77665500>;
+			reboot-cmd;
+		};
+
+		dm-verity-device-corrupted {
+			cmd = "dm-verity device corrupted";
+			reg-val = <0x04 0x77665508>;
+			reboot-cmd;
+		};
+
+		dm-verity-enforcing {
+			cmd = "dm-verity enforcing";
+			reg-val = <0x05 0x77665509>;
+			reboot-cmd;
+		};
+
+		keys-clear {
+			cmd = "keys clear";
+			reg-val = <0x06 0x7766550A>;
+			reboot-cmd;
+		};
+	};
 };
 
 #include "lagoon-gdsc.dtsi"
@@ -3913,6 +3996,7 @@
 	#size-cells = <0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <
+			&get_stageid_adc_default
 			&rfc_cam_therm_default
 			&rear_cam_flash_therm_default
 			&quiet_therm_default
@@ -3937,6 +4021,14 @@
 	pa_therm1 {
 		reg = <ADC_AMUX_THM3_PU2>;
 		label = "pa_therm1";
+		qcom,ratiometric;
+		qcom,hw-settle-time = <200>;
+		qcom,pre-scaling = <1 1>;
+	};
+
+	get_stageid_adc {
+		reg = <ADC_GPIO1_PU2>;
+		label = "get_stageid_adc";
 		qcom,ratiometric;
 		qcom,hw-settle-time = <200>;
 		qcom,pre-scaling = <1 1>;
@@ -3968,6 +4060,13 @@
 };
 
 &pm6150l_gpios {
+	get_stageid_adc {
+		get_stageid_adc_default: get_stageid_adc_default {
+			pins = "gpio5";
+			bias-high-impedance;
+		};
+	};
+
 	rfc_cam_therm {
 		rfc_cam_therm_default: rfc_cam_therm_default {
 			pins = "gpio6";

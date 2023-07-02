@@ -118,6 +118,7 @@ dtb-$(CONFIG_ARCH_LITO) += lito-rumi.dtb \
                 orchid-cdp.dtb
 endif
 
+ifneq ($(CONFIG_ARCH_SONY_LENA),y)
 ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
 dtbo-$(CONFIG_ARCH_LAGOON) += \
 		lagoon-rumi-overlay.dtbo \
@@ -202,6 +203,7 @@ dtb-$(CONFIG_ARCH_BENGAL) += bengal-rumi.dtb \
 		bengalp-iot-idp-usbc-2gb.dtb \
 		bengalp-iot-idp-usbc.dtb \
 		bengalp-iot-idp-2gb.dtb
+endif
 endif
 
 ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
